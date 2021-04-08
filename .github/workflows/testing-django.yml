@@ -1,0 +1,59 @@
+name: Run tests in Django Docker
+
+on:
+  push:
+  pull_request:
+
+env:
+  DJANGO_SERVICE_NAME: web
+  # use the following network if you do not declare another in compose.yml
+  COMPOSE_NETWORK: ${{ github.event.repository.name }}_default
+
+jobs:
+  test:
+    name: Prepare & Run Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+    - name: Check out the repo
+      uses: actions/checkout@v2
+
+    - name: Build the compose stack and run in a daemon mode
+      run: docker-compose -p ${{ github.event.repository.name }} up --build -d
+
+    - name: Run web-service tests by ./manage.py
+      run: docker exec -t ${{ github.event.repository.name }}_${{ env.DJANGO_SERVICE_NAME }}_1 sh -c "./manage.py test"
+
+    # but sometimes it is better to create merely several workflows, or jobs instead
+    - name: Run tests in built image from the brand new container with its envs
+      run:
+        docker run
+        -e DEBUG=1
+        -e SECRET_KEY=foo
+        -e DJANGO_ALLOWED_HOSTS=*
+        -e SQL_ENGINE=django.db.backends.postgresql
+        -e SQL_DATABASE=hello_django_dev
+        -e SQL_USER=hello_django
+        -e SQL_PASSWORD=hello_django
+        -e SQL_HOST=db
+        -e SQL_PORT=5432
+        -e DATABASE=postgres
+        --network ${{ env.COMPOSE_NETWORK }}
+        ${{ github.event.repository.name }}_${{ env.DJANGO_SERVICE_NAME }}:latest
+        python -c "print(True)" #-m unittest
+
+    - name: In-chat-notify if job failed
+      if: ${{ failure() }}
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_CHATID }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        format: markdown
+        message: |
+          👨🏻‍💻 #GitHubActionFailure
+          Author: @${{ github.actor }}
+          Action: `${{ github.event_name }}`
+          Workflow&Job: `${{ github.workflow }}` & `${{ github.job }}`
+          Commit-Url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          Actions: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}/checks
