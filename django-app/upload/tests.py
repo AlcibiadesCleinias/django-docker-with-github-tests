@@ -6,5 +6,5 @@ class PlaceboTestCase(TestCase):
         pass
 
     def test_placebo(self):
-        raise NotImplementedError
-        # pass
+        # raise NotImplementedError
+        pass
